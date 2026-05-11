@@ -210,7 +210,7 @@ export function AdminFormsPage() {
       <CustomDialog
         open={Boolean(pendingDelete)}
         title="Delete form"
-        message={`Delete "${pendingDelete?.name || ""}" and all fields/submissions? This action cannot be undone.`}
+        message={`Delete "${pendingDelete?.name || ""}" and all fields? This action cannot be undone.`}
         variant="danger"
         confirmLabel="Delete"
         cancelLabel="Cancel"

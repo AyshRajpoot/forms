@@ -1,9 +1,6 @@
 const Form = require("../models/Form");
 const FormField = require("../models/FormField");
-const FormSubmission = require("../models/FormSubmission");
 const { validateFormFieldDocument } = require("../validators/adminValidators");
-const { validateSubmission } = require("../validators/submissionValidator");
-const { secureSubmissionPayload, isPasswordLikeField, isBcryptHash } = require("../utils/submissionSecurity");
 
 function normalizeLabel(value) {
   return String(value || "").trim().toLowerCase();
@@ -76,10 +73,9 @@ async function deleteForm(req, res, next) {
     }
 
     await FormField.deleteMany({ formId: form._id });
-    await FormSubmission.deleteMany({ formId: form._id });
     await form.deleteOne();
 
-    return res.status(200).json({ message: "Form and related fields and submissions deleted" });
+    return res.status(200).json({ message: "Form and related fields deleted" });
   } catch (error) {
     return next(error);
   }
@@ -128,113 +124,6 @@ async function listFields(req, res, next) {
 
     const fields = await FormField.find({ formId }).sort({ priority: 1 }).lean();
     return res.status(200).json(fields);
-  } catch (error) {
-    return next(error);
-  }
-}
-
-async function listSubmissions(req, res, next) {
-  const { formId } = req.params;
-  try {
-    const form = await Form.findById(formId).lean();
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    const fields = await FormField.find({ formId }).sort({ priority: 1 }).lean();
-    const fieldByKey = new Map(fields.map((field) => [field.fieldKey, field]));
-    const submissions = await FormSubmission.find({ formId })
-      .sort({ createdAt: -1 })
-      .select("payload createdAt updatedAt")
-      .lean();
-
-    const updates = [];
-    const securedSubmissions = await Promise.all(
-      submissions.map(async (submission) => {
-        const payload = submission?.payload && typeof submission.payload === "object" ? { ...submission.payload } : {};
-        let changed = false;
-
-        for (const [key, value] of Object.entries(payload)) {
-          const field = fieldByKey.get(key);
-          if (!field || !isPasswordLikeField(field)) {
-            continue;
-          }
-          if (typeof value === "string" && value !== "" && !isBcryptHash(value)) {
-            payload[key] = await secureSubmissionPayload([field], { [key]: value }).then((result) => result[key]);
-            changed = true;
-          }
-        }
-
-        if (changed) {
-          updates.push({
-            updateOne: {
-              filter: { _id: submission._id },
-              update: { $set: { payload } },
-            },
-          });
-        }
-
-        return { ...submission, payload };
-      })
-    );
-
-    if (updates.length > 0) {
-      await FormSubmission.bulkWrite(updates);
-    }
-
-    return res.status(200).json({
-      form: { _id: form._id, name: form.name, key: form.key, isActive: form.isActive },
-      submissions: securedSubmissions,
-    });
-  } catch (error) {
-    return next(error);
-  }
-}
-
-async function updateSubmission(req, res, next) {
-  const { formId, submissionId } = req.params;
-  try {
-    const form = await Form.findById(formId).lean();
-    if (!form) {
-      return res.status(404).json({ message: "Form not found" });
-    }
-
-    const submission = await FormSubmission.findOne({ _id: submissionId, formId });
-    if (!submission) {
-      return res.status(404).json({ message: "Submission not found" });
-    }
-
-    const fields = await FormField.find({ formId }).sort({ priority: 1 }).lean();
-    const payload = req.body?.payload && typeof req.body.payload === "object" ? req.body.payload : req.body;
-    const validation = validateSubmission(fields, payload || {});
-    if (!validation.isValid) {
-      return res.status(400).json({
-        message: "Submission validation failed",
-        errors: validation.errors,
-      });
-    }
-
-    const securedPayload = await secureSubmissionPayload(fields, payload || {});
-    submission.payload = securedPayload;
-    await submission.save();
-
-    return res.status(200).json({
-      message: "Submission updated",
-      submission,
-    });
-  } catch (error) {
-    return next(error);
-  }
-}
-
-async function deleteSubmission(req, res, next) {
-  const { formId, submissionId } = req.params;
-  try {
-    const deleted = await FormSubmission.findOneAndDelete({ _id: submissionId, formId });
-    if (!deleted) {
-      return res.status(404).json({ message: "Submission not found" });
-    }
-    return res.status(200).json({ message: "Submission deleted" });
   } catch (error) {
     return next(error);
   }
@@ -337,9 +226,6 @@ module.exports = {
   deleteForm,
   createField,
   listFields,
-  listSubmissions,
-  updateSubmission,
-  deleteSubmission,
   getField,
   updateField,
   deleteField,

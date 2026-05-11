@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { CustomDialog } from "../components/CustomDialog";
@@ -14,23 +14,15 @@ const FIELD_TYPES = [
   { value: "dropdown", label: "Dropdown" },
 ];
 
-const TAB = {
-  BUILDER: "builder",
-  ENTRIES: "entries",
-};
-
 export function AdminFormDetailPage() {
   const { formId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const [form, setForm] = useState(null);
   const [fields, setFields] = useState([]);
-  const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
-  const [tab, setTab] = useState(searchParams.get("tab") === "entries" ? TAB.ENTRIES : TAB.BUILDER);
   const [showAddFieldForm, setShowAddFieldForm] = useState(false);
 
   const [formName, setFormName] = useState("");
@@ -89,21 +81,6 @@ export function AdminFormDetailPage() {
   useEffect(() => {
     setNewField((prev) => ({ ...prev, priority: nextPriority }));
   }, [nextPriority]);
-
-  async function loadEntries() {
-    try {
-      const res = await api(`/api/admin/forms/${formId}/submissions`);
-      setEntries(Array.isArray(res?.submissions) ? res.submissions : []);
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
-  useEffect(() => {
-    if (tab === TAB.ENTRIES) {
-      loadEntries();
-    }
-  }, [tab]);
 
   async function saveFormSettings(e) {
     e.preventDefault();
@@ -354,24 +331,6 @@ export function AdminFormDetailPage() {
   }
 
   const visibleFields = form?.isActive ? fields : [];
-  const entryColumns = fields.map((field) => field.fieldKey);
-  const fieldByKey = new Map(fields.map((field) => [field.fieldKey, field]));
-
-  function formatEntryValue(key, rawValue) {
-    if (rawValue === undefined || rawValue === null || rawValue === "") {
-      return "—";
-    }
-
-    const field = fieldByKey.get(key);
-    const normalized = `${field?.fieldKey || key} ${field?.label || ""}`.toLowerCase();
-    const isPasswordLike = field?.type === "password" || normalized.includes("password");
-    if (isPasswordLike) {
-      const text = String(rawValue);
-      return text.length <= 5 ? text : `${text.slice(0, 5)}...`;
-    }
-
-    return String(rawValue);
-  }
 
   return (
     <div className="stack">
@@ -380,9 +339,7 @@ export function AdminFormDetailPage() {
       </p>
       <section className="page-hero page-hero-compact">
         <h1 className="page-hero-title">{form.name}</h1>
-        <p className="page-hero-lead">
-          Manage form settings, preview final structure, and check user entries from one place.
-        </p>
+        <p className="page-hero-lead">Manage form settings, preview the final structure, and open the view page from one place.</p>
       </section>
 
       {error ? <div className="alert alert-error">{error}</div> : null}
@@ -431,28 +388,13 @@ export function AdminFormDetailPage() {
         </form>
       </div>
 
-      <div className="tab-row">
-        <button
-          type="button"
-          className={`tab-btn ${tab === TAB.BUILDER ? "tab-btn-active" : ""}`}
-          onClick={() => setTab(TAB.BUILDER)}
-        >
-          Builder
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${tab === TAB.ENTRIES ? "tab-btn-active" : ""}`}
-          onClick={() => setTab(TAB.ENTRIES)}
-        >
-          Entries
-        </button>
+      <div className="tab-row" style={{ alignItems: "center" }}>
         <Link to={`/admin/forms/${formId}/view`} className="btn btn-secondary btn-sm">
-          Open View Page
+          Open view page
         </Link>
       </div>
 
-      {tab === TAB.BUILDER ? (
-        <div className="card card-pad">
+      <div className="card card-pad">
           {!form.isActive ? (
             <div className="alert alert-error">
               Form is inactive, so fields are hidden. Activate the form to manage and view fields.
@@ -663,52 +605,6 @@ export function AdminFormDetailPage() {
             </>
           )}
         </div>
-      ) : null}
-
-      {tab === TAB.ENTRIES ? (
-        <div className="card card-pad">
-          <div className="card-header">
-            <h2 className="card-title">Entries</h2>
-            <button type="button" className="btn btn-secondary btn-sm" onClick={loadEntries}>
-              Refresh
-            </button>
-          </div>
-          {entries.length === 0 ? (
-            <p className="muted">No entries yet.</p>
-          ) : (
-            <div className="table-wrap">
-              <table className="table entries-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Submitted At</th>
-                    {entryColumns.map((key) => (
-                      <th key={key}>{String(key).replace(/_/g, " ")}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry, idx) => (
-                    <tr key={entry._id}>
-                      <td>{idx + 1}</td>
-                      <td>{new Date(entry.createdAt).toLocaleString("en-GB")}</td>
-                      {entryColumns.map((key) => {
-                        const payload = entry?.payload && typeof entry.payload === "object" ? entry.payload : {};
-                        const value = payload[key];
-                        return (
-                          <td key={`${entry._id}-${key}`}>
-                            {formatEntryValue(key, value)}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ) : null}
 
       {editOpen && editField ? (
         <div className="modal-backdrop" role="presentation" onClick={() => !savingField && setEditOpen(false)}>
@@ -856,7 +752,7 @@ export function AdminFormDetailPage() {
         title={confirmDialog.type === "delete-form" ? "Delete form" : "Delete field"}
         message={
           confirmDialog.type === "delete-form"
-            ? `Delete "${form?.name || ""}" and all fields/submissions? This action cannot be undone.`
+            ? `Delete "${form?.name || ""}" and all fields? This action cannot be undone.`
             : `Delete field "${confirmDialog.field?.label || ""}"?`
         }
         variant="danger"

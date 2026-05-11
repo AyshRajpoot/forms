@@ -75,51 +75,72 @@ export function AdminFormCreatePage() {
     return parsed;
   }
 
+  function countDropdownOptions(draft) {
+    const raw = draft.options;
+    if (!Array.isArray(raw) || raw.length === 0) return 0;
+    return raw.filter((x) => {
+      if (typeof x === "string") return x.trim().length > 0;
+      if (x && typeof x === "object" && typeof x.label === "string") return x.label.trim().length > 0;
+      return false;
+    }).length;
+  }
+
   function validateDraftInput(draft, existingFields, currentIndex = null) {
     const errors = {};
-    const normalizedLabel = draft.label.trim().toLowerCase();
+    const labelStr = String(draft.label ?? "").trim();
+    const normalizedLabel = labelStr.toLowerCase();
 
-    if (!draft.label.trim()) {
+    if (!labelStr) {
       errors.label = "Field label is required.";
     } else {
       const duplicateLabel = existingFields.some(
         (field, idx) => idx !== currentIndex && String(field.label || "").trim().toLowerCase() === normalizedLabel
       );
       if (duplicateLabel) {
-        errors.label = "This field already exists.";
+        errors.label = "Another field already uses this label.";
       }
     }
 
     const priority = toSafeInt(draft.priority);
     if (priority == null || priority < 1) {
-      errors.priority = "Priority must be a number greater than 0.";
+      errors.priority = "Priority must be a whole number greater than 0.";
     } else {
       const duplicate = existingFields.some((field, idx) => idx !== currentIndex && Number(field.priority) === priority);
       if (duplicate) {
-        errors.priority = "This priority is already used.";
+        errors.priority = "Another field already uses this priority number.";
       }
     }
 
     if (["text", "textarea", "email"].includes(draft.type)) {
-      const minLength = toSafeInt(draft.minLength);
-      const maxLength = toSafeInt(draft.maxLength);
+      const minRaw = draft.minLength;
+      const maxRaw = draft.maxLength;
+      const minLength = toSafeInt(minRaw);
+      const maxLength = toSafeInt(maxRaw);
+      const minProvided = minRaw !== "" && minRaw !== null && minRaw !== undefined;
+      const maxProvided = maxRaw !== "" && maxRaw !== null && maxRaw !== undefined;
 
-      if (draft.minLength !== "" && (minLength == null || minLength < 0)) {
-        errors.minLength = "Min length must be a valid number (0 or greater).";
+      if (minProvided && (minLength == null || minLength < 0)) {
+        errors.minLength = "Min length must be a whole number (0 or greater).";
       }
-      if (draft.maxLength !== "" && (maxLength == null || maxLength < 0)) {
-        errors.maxLength = "Max length must be a valid number (0 or greater).";
+      if (maxProvided && (maxLength == null || maxLength < 0)) {
+        errors.maxLength = "Max length must be a whole number (0 or greater).";
       }
       if (minLength != null && maxLength != null && minLength > maxLength) {
-        errors.maxLength = "Max length must be greater than or equal to min length.";
+        errors.maxLength = "Max length cannot be less than min length.";
       }
     }
 
-    if (draft.type === "dropdown" && draft.options.filter((x) => x.trim()).length === 0) {
-      errors.options = "Dropdown must have at least one value.";
+    if (draft.type === "dropdown" && countDropdownOptions(draft) === 0) {
+      errors.options = "Dropdown must have at least one non-empty option.";
     }
 
     return errors;
+  }
+
+  /** Multiple issues: join with semicolon so sentences stay clear. */
+  function describeValidationErrorsForSave(validationErrors) {
+    const parts = Object.values(validationErrors);
+    return parts.length > 1 ? parts.join("; ") : parts[0] || "";
   }
 
   function addFieldDraft(e) {
@@ -170,7 +191,10 @@ export function AdminFormCreatePage() {
     for (let idx = 0; idx < draftFields.length; idx += 1) {
       const validationErrors = validateDraftInput(draftFields[idx], draftFields, idx);
       if (Object.keys(validationErrors).length > 0) {
-        setError(`Invalid field data in row ${idx + 1}. Please fix before saving.`);
+        const row = draftFields[idx];
+        const name = String(row?.label ?? "").trim() || `Field ${idx + 1}`;
+        const detail = describeValidationErrorsForSave(validationErrors);
+        setError(`Row ${idx + 1} — “${name}”: ${detail} Use Edit on that row to fix it, then save again.`);
         return;
       }
     }

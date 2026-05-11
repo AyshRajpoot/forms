@@ -7,9 +7,6 @@ const {
   deleteForm,
   createField,
   listFields,
-  listSubmissions,
-  updateSubmission,
-  deleteSubmission,
   getField,
   updateField,
   deleteField,
@@ -34,9 +31,6 @@ router.patch("/forms/:formId", validateBody(updateFormSchema), updateForm);
 router.delete("/forms/:formId", deleteForm);
 
 router.get("/forms/:formId/fields", listFields);
-router.get("/forms/:formId/submissions", listSubmissions);
-router.patch("/forms/:formId/submissions/:submissionId", updateSubmission);
-router.delete("/forms/:formId/submissions/:submissionId", deleteSubmission);
 router.post("/forms/:formId/fields", validateBody(createFieldSchema), createField);
 
 router.get("/fields/:fieldId", getField);

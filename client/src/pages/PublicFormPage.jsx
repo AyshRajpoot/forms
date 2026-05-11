@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
 
@@ -8,16 +8,12 @@ export function PublicFormPage() {
   const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [fieldErrors, setFieldErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setError("");
       setLoading(true);
-      setDone(false);
       try {
         const res = await api(`/api/forms/${encodeURIComponent(formKey)}/active-fields`);
         if (cancelled) return;
@@ -40,48 +36,6 @@ export function PublicFormPage() {
   }, [formKey]);
 
   const fields = data?.fields || [];
-
-  const payload = useMemo(() => {
-    const out = {};
-    fields.forEach((f) => {
-      const raw = values[f.fieldKey];
-      if (f.type === "number" && raw !== "" && raw != null) {
-        const n = Number(raw);
-        out[f.fieldKey] = Number.isNaN(n) ? raw : n;
-      } else {
-        out[f.fieldKey] = raw;
-      }
-    });
-    return out;
-  }, [fields, values]);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError("");
-    setFieldErrors({});
-    setSubmitting(true);
-    try {
-      await api(`/api/forms/${encodeURIComponent(formKey)}/submissions`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      setDone(true);
-      const reset = {};
-      fields.forEach((f) => {
-        reset[f.fieldKey] = "";
-      });
-      setValues(reset);
-    } catch (err) {
-      if (err.body?.errors && typeof err.body.errors === "object") {
-        setFieldErrors(err.body.errors);
-        setError(err.message || "Please fix the highlighted fields.");
-      } else {
-        setError(err.message || "Submission failed");
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   if (loading) {
     return (
@@ -110,24 +64,16 @@ export function PublicFormPage() {
       <div className="card card-pad public-card">
         <div className="public-head">
           <h1>{data?.form?.name || "Form"}</h1>
-          <p className="muted">Please fill in all required fields and submit.</p>
+          <p className="muted">This form is view only — responses are not collected.</p>
         </div>
 
-        {done ? (
-          <div className="alert alert-success" role="status">
-            Thank you — your response was submitted successfully.
-          </div>
-        ) : null}
-
-        {error && data ? (
-          <div className="alert alert-error" role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        <form onSubmit={handleSubmit} className="public-form">
+        <form
+          className="public-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+          }}
+        >
           {fields.map((f) => {
-            const err = fieldErrors[f.fieldKey];
             const id = `field-${f.fieldKey}`;
             return (
               <div className="field" key={f._id || f.fieldKey}>
@@ -140,8 +86,7 @@ export function PublicFormPage() {
                     id={id}
                     className="textarea"
                     value={values[f.fieldKey] ?? ""}
-                    onChange={(e) => setValues({ ...values, [f.fieldKey]: e.target.value })}
-                    required={f.required}
+                    readOnly
                     minLength={f.minLength}
                     maxLength={f.maxLength}
                   />
@@ -150,8 +95,7 @@ export function PublicFormPage() {
                     id={id}
                     className="select"
                     value={values[f.fieldKey] ?? ""}
-                    onChange={(e) => setValues({ ...values, [f.fieldKey]: e.target.value })}
-                    required={f.required}
+                    onChange={(e) => setValues((prev) => ({ ...prev, [f.fieldKey]: e.target.value }))}
                   >
                     <option value="">Select…</option>
                     {(f.options || []).map((o) => (
@@ -166,26 +110,16 @@ export function PublicFormPage() {
                     className="input"
                     type={f.type === "number" ? "number" : f.type === "email" ? "email" : f.type === "password" ? "password" : "text"}
                     value={values[f.fieldKey] ?? ""}
-                    onChange={(e) => setValues({ ...values, [f.fieldKey]: e.target.value })}
-                    required={f.required}
+                    readOnly
                     minLength={f.minLength}
                     maxLength={f.maxLength}
                   />
                 )}
-                {err ? (
-                  <p style={{ color: "var(--color-danger)", fontSize: "0.85rem", margin: "0.35rem 0 0" }}>{err}</p>
-                ) : null}
               </div>
             );
           })}
 
-          {fields.length === 0 ? (
-            <p className="muted">This form has no active fields yet.</p>
-          ) : (
-            <button type="submit" className="btn btn-primary" style={{ marginTop: "0.5rem" }} disabled={submitting}>
-              {submitting ? "Submitting…" : "Submit"}
-            </button>
-          )}
+          {fields.length === 0 ? <p className="muted">This form has no active fields yet.</p> : null}
         </form>
       </div>
     </div>
