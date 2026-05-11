@@ -23,6 +23,10 @@ const formFieldSchema = new mongoose.Schema(
     required: { type: Boolean, default: false },
     minLength: { type: Number, min: 0 },
     maxLength: { type: Number, min: 0 },
+    passwordMinUppercase: { type: Number, min: 0, max: 64 },
+    passwordMinLowercase: { type: Number, min: 0, max: 64 },
+    passwordMinDigits: { type: Number, min: 0, max: 64 },
+    passwordMinSpecial: { type: Number, min: 0, max: 64 },
     options: { type: [optionSchema], default: [] },
   },
   { timestamps: true }

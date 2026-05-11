@@ -3,7 +3,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
 import { ToggleSwitch } from "../components/ToggleSwitch";
 import { CustomDialog } from "../components/CustomDialog";
+import { CenterNotice } from "../components/CenterNotice";
 import { pickUniqueFieldKey } from "../utils/formKey";
+import { getPasswordRequirementHint } from "../utils/formFieldValidation";
+import { getFreePrioritySlotsMessage } from "../utils/priorityHints";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
@@ -13,6 +16,20 @@ const FIELD_TYPES = [
   { value: "password", label: "Password" },
   { value: "dropdown", label: "Dropdown" },
 ];
+
+function previewPasswordHint(minLengthStr, maxLengthStr) {
+  const minL = minLengthStr === "" ? undefined : Number(minLengthStr);
+  const maxL = maxLengthStr === "" ? undefined : Number(maxLengthStr);
+  return getPasswordRequirementHint({
+    type: "password",
+    minLength: minL !== undefined && Number.isFinite(minL) ? minL : undefined,
+    maxLength: maxL !== undefined && Number.isFinite(maxL) ? maxL : undefined,
+    passwordMinUppercase: 1,
+    passwordMinLowercase: 1,
+    passwordMinDigits: 1,
+    passwordMinSpecial: 1,
+  });
+}
 
 export function AdminFormDetailPage() {
   const { formId } = useParams();
@@ -48,15 +65,19 @@ export function AdminFormDetailPage() {
   const [editFieldErrors, setEditFieldErrors] = useState({});
   const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, field: null });
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [centerNotice, setCenterNotice] = useState({ open: false, message: "" });
 
   const nextPriority = useMemo(() => {
     if (!fields.length) return 1;
     return Math.max(...fields.map((x) => x.priority || 0)) + 1;
   }, [fields]);
 
-  const load = useCallback(async () => {
+  const freePriorityHint = useMemo(() => getFreePrioritySlotsMessage(fields), [fields]);
+
+  const load = useCallback(async (opts = { showLoading: true }) => {
+    const showLoading = opts.showLoading !== false;
     setError("");
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const [f, flds] = await Promise.all([
         api(`/api/admin/forms/${formId}`),
@@ -70,7 +91,7 @@ export function AdminFormDetailPage() {
       setForm(null);
       setFields([]);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [formId]);
 
@@ -149,9 +170,15 @@ export function AdminFormDetailPage() {
       priority: Number(state.priority),
       required: state.required,
     };
-    if (["text", "textarea", "email"].includes(state.type)) {
+    if (["text", "textarea", "email", "password"].includes(state.type)) {
       if (state.minLength !== "") body.minLength = Number(state.minLength);
       if (state.maxLength !== "") body.maxLength = Number(state.maxLength);
+    }
+    if (state.type === "password") {
+      body.passwordMinUppercase = 1;
+      body.passwordMinLowercase = 1;
+      body.passwordMinDigits = 1;
+      body.passwordMinSpecial = 1;
     }
     if (state.type === "dropdown") {
       body.options = state.options
@@ -183,16 +210,19 @@ export function AdminFormDetailPage() {
     }
     setAddingField(true);
     try {
-      const created = await api(`/api/admin/forms/${formId}/fields`, {
+      const res = await api(`/api/admin/forms/${formId}/fields`, {
         method: "POST",
         body: JSON.stringify(createFieldPayload(newField)),
       });
-      setFields((prev) => [...prev, created].sort((a, b) => a.priority - b.priority));
+      if (res.priorityNotice) {
+        setCenterNotice({ open: true, message: res.priorityNotice });
+      }
+      await load({ showLoading: false });
       setNewField({
         label: "",
         type: "text",
         enabled: true,
-        priority: nextPriority + 1,
+        priority: 1,
         required: false,
         minLength: "",
         maxLength: "",
@@ -201,9 +231,6 @@ export function AdminFormDetailPage() {
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes("already exists")) {
         setNewFieldErrors((prev) => ({ ...prev, label: "This field already exists." }));
-      }
-      if (err.message && err.message.toLowerCase().includes("priority")) {
-        setNewFieldErrors({ priority: "This priority is already used. Please select another." });
       }
       setError(err.message);
     } finally {
@@ -218,7 +245,7 @@ export function AdminFormDetailPage() {
       label: field.label,
       type: field.type,
       enabled: field.enabled,
-      priority: field.priority,
+      priority: String(field.priority),
       required: Boolean(field.required),
       minLength: field.minLength ?? "",
       maxLength: field.maxLength ?? "",
@@ -245,16 +272,29 @@ export function AdminFormDetailPage() {
         return;
       }
 
+      const priorityNum = Number(editField.priority);
+      if (!Number.isFinite(priorityNum) || priorityNum < 1) {
+        setEditFieldErrors({ priority: "Enter a valid priority (1 or greater)." });
+        setError("Please fix highlighted field errors.");
+        return;
+      }
+
       const body = {
         label: editField.label.trim(),
         type: editField.type,
         enabled: editField.enabled,
-        priority: Number(editField.priority),
+        priority: priorityNum,
         required: editField.required,
       };
-      if (["text", "textarea", "email"].includes(editField.type)) {
+      if (["text", "textarea", "email", "password"].includes(editField.type)) {
         if (editField.minLength !== "") body.minLength = Number(editField.minLength);
         if (editField.maxLength !== "") body.maxLength = Number(editField.maxLength);
+      }
+      if (editField.type === "password") {
+        body.passwordMinUppercase = 1;
+        body.passwordMinLowercase = 1;
+        body.passwordMinDigits = 1;
+        body.passwordMinSpecial = 1;
       }
       if (editField.type === "dropdown") {
         body.options = editField.options
@@ -264,19 +304,19 @@ export function AdminFormDetailPage() {
         body.options = [];
       }
 
-      const updated = await api(`/api/admin/fields/${editField._id}`, {
+      const res = await api(`/api/admin/fields/${editField._id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
       });
-      setFields((prev) => prev.map((f) => (f._id === updated._id ? updated : f)).sort((a, b) => a.priority - b.priority));
+      if (res.priorityNotice) {
+        setCenterNotice({ open: true, message: res.priorityNotice });
+      }
+      await load({ showLoading: false });
       setEditOpen(false);
       setEditField(null);
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes("already exists")) {
         setEditFieldErrors((prev) => ({ ...prev, label: "This field already exists." }));
-      }
-      if (err.message && err.message.toLowerCase().includes("priority")) {
-        setEditFieldErrors({ priority: "This priority is already used. Please select another." });
       }
       setError(err.message);
     } finally {
@@ -501,6 +541,11 @@ export function AdminFormDetailPage() {
                   </div>
                   <div className="field">
                     <label>Priority</label>
+                    {freePriorityHint ? (
+                      <p className="muted" style={{ fontSize: "0.85rem", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                        {freePriorityHint}
+                      </p>
+                    ) : null}
                     <input
                       className={`input ${newFieldErrors.priority ? "field-control-error" : ""}`}
                       type="number"
@@ -516,7 +561,7 @@ export function AdminFormDetailPage() {
                     ) : null}
                   </div>
                 </div>
-                {["text", "textarea", "email"].includes(newField.type) ? (
+                {["text", "textarea", "email", "password"].includes(newField.type) ? (
                   <div className="grid-2">
                     <div className="field">
                       <label>Min length (optional)</label>
@@ -539,6 +584,12 @@ export function AdminFormDetailPage() {
                       />
                     </div>
                   </div>
+                ) : null}
+
+                {newField.type === "password" ? (
+                  <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
+                    {previewPasswordHint(newField.minLength, newField.maxLength)}
+                  </p>
                 ) : null}
 
                 {newField.type === "dropdown" ? (
@@ -642,12 +693,17 @@ export function AdminFormDetailPage() {
                 </div>
                 <div className="field">
                   <label>Priority</label>
+                  {freePriorityHint ? (
+                    <p className="muted" style={{ fontSize: "0.85rem", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                      {freePriorityHint}
+                    </p>
+                  ) : null}
                   <input
                     className={`input ${editFieldErrors.priority ? "field-control-error" : ""}`}
                     type="number"
                     min={1}
                     value={editField.priority}
-                    onChange={(e) => setEditField((prev) => ({ ...prev, priority: Number(e.target.value) }))}
+                    onChange={(e) => setEditField((prev) => ({ ...prev, priority: e.target.value }))}
                     required
                   />
                   {editFieldErrors.priority ? (
@@ -658,7 +714,7 @@ export function AdminFormDetailPage() {
                 </div>
               </div>
 
-              {["text", "textarea", "email"].includes(editField.type) ? (
+              {["text", "textarea", "email", "password"].includes(editField.type) ? (
                 <div className="grid-2">
                   <div className="field">
                     <label>Min length</label>
@@ -681,6 +737,12 @@ export function AdminFormDetailPage() {
                     />
                   </div>
                 </div>
+              ) : null}
+
+              {editField.type === "password" ? (
+                <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
+                  {previewPasswordHint(editField.minLength, editField.maxLength)}
+                </p>
               ) : null}
 
               {editField.type === "dropdown" ? (
@@ -746,6 +808,13 @@ export function AdminFormDetailPage() {
           </div>
         </div>
       ) : null}
+
+      <CenterNotice
+        open={centerNotice.open}
+        message={centerNotice.message}
+        title="Priority updated"
+        onDismiss={() => setCenterNotice({ open: false, message: "" })}
+      />
 
       <CustomDialog
         open={confirmDialog.open}

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { pickUniqueFieldKey, pickUniqueFormKey } from "../utils/formKey";
+import { getPasswordRequirementHint } from "../utils/formFieldValidation";
+import { getFreePrioritySlotsMessage } from "../utils/priorityHints";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
@@ -25,6 +27,20 @@ function emptyField(priority) {
   };
 }
 
+function previewPasswordHint(minLengthStr, maxLengthStr) {
+  const minL = minLengthStr === "" ? undefined : Number(minLengthStr);
+  const maxL = maxLengthStr === "" ? undefined : Number(maxLengthStr);
+  return getPasswordRequirementHint({
+    type: "password",
+    minLength: minL !== undefined && Number.isFinite(minL) ? minL : undefined,
+    maxLength: maxL !== undefined && Number.isFinite(maxL) ? maxL : undefined,
+    passwordMinUppercase: 1,
+    passwordMinLowercase: 1,
+    passwordMinDigits: 1,
+    passwordMinSpecial: 1,
+  });
+}
+
 export function AdminFormCreatePage() {
   const navigate = useNavigate();
   const [forms, setForms] = useState([]);
@@ -44,6 +60,8 @@ export function AdminFormCreatePage() {
     if (draftFields.length === 0) return 1;
     return Math.max(...draftFields.map((f) => f.priority)) + 1;
   }, [draftFields]);
+
+  const freePriorityHint = useMemo(() => getFreePrioritySlotsMessage(draftFields), [draftFields]);
 
   useEffect(() => {
     let mounted = true;
@@ -111,7 +129,7 @@ export function AdminFormCreatePage() {
       }
     }
 
-    if (["text", "textarea", "email"].includes(draft.type)) {
+    if (["text", "textarea", "email", "password"].includes(draft.type)) {
       const minRaw = draft.minLength;
       const maxRaw = draft.maxLength;
       const minLength = toSafeInt(minRaw);
@@ -127,6 +145,10 @@ export function AdminFormCreatePage() {
       }
       if (minLength != null && maxLength != null && minLength > maxLength) {
         errors.maxLength = "Max length cannot be less than min length.";
+      }
+
+      if (draft.type === "password" && minLength != null && minLength < 4) {
+        errors.minLength = "Use min length at least 4 (one slot each for upper, lower, digit, and special).";
       }
     }
 
@@ -166,9 +188,15 @@ export function AdminFormCreatePage() {
       required: fieldDraft.required,
       enabled: fieldDraft.enabled,
     };
-    if (["text", "textarea", "email"].includes(fieldDraft.type)) {
+    if (["text", "textarea", "email", "password"].includes(fieldDraft.type)) {
       if (fieldDraft.minLength !== "") payload.minLength = Number(fieldDraft.minLength);
       if (fieldDraft.maxLength !== "") payload.maxLength = Number(fieldDraft.maxLength);
+    }
+    if (fieldDraft.type === "password") {
+      payload.passwordMinUppercase = 1;
+      payload.passwordMinLowercase = 1;
+      payload.passwordMinDigits = 1;
+      payload.passwordMinSpecial = 1;
     }
     if (fieldDraft.type === "dropdown") {
       payload.options = fieldDraft.options
@@ -257,7 +285,7 @@ export function AdminFormCreatePage() {
       required: editingDraft.required,
       enabled: editingDraft.enabled,
     };
-    if (["text", "textarea", "email"].includes(editingDraft.type)) {
+    if (["text", "textarea", "email", "password"].includes(editingDraft.type)) {
       if (editingDraft.minLength !== "") updated.minLength = Number(editingDraft.minLength);
       else delete updated.minLength;
       if (editingDraft.maxLength !== "") updated.maxLength = Number(editingDraft.maxLength);
@@ -265,6 +293,17 @@ export function AdminFormCreatePage() {
     } else {
       delete updated.minLength;
       delete updated.maxLength;
+    }
+    if (editingDraft.type === "password") {
+      updated.passwordMinUppercase = 1;
+      updated.passwordMinLowercase = 1;
+      updated.passwordMinDigits = 1;
+      updated.passwordMinSpecial = 1;
+    } else {
+      delete updated.passwordMinUppercase;
+      delete updated.passwordMinLowercase;
+      delete updated.passwordMinDigits;
+      delete updated.passwordMinSpecial;
     }
     if (editingDraft.type === "dropdown") {
       updated.options = editingDraft.options
@@ -346,6 +385,11 @@ export function AdminFormCreatePage() {
             </div>
             <div className="field">
               <label>Priority</label>
+              {freePriorityHint ? (
+                <p className="muted" style={{ fontSize: "0.85rem", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                  {freePriorityHint}
+                </p>
+              ) : null}
               <input
                 className={`input ${fieldDraftErrors.priority ? "field-control-error" : ""}`}
                 type="number"
@@ -358,7 +402,7 @@ export function AdminFormCreatePage() {
             </div>
           </div>
 
-          {["text", "textarea", "email"].includes(fieldDraft.type) ? (
+          {["text", "textarea", "email", "password"].includes(fieldDraft.type) ? (
             <div className="grid-2">
               <div className="field">
                 <label>Min length (optional)</label>
@@ -385,6 +429,12 @@ export function AdminFormCreatePage() {
                 {fieldDraftErrors.maxLength ? <p className="muted" style={{ color: "var(--color-danger)" }}>{fieldDraftErrors.maxLength}</p> : null}
               </div>
             </div>
+          ) : null}
+
+          {fieldDraft.type === "password" ? (
+            <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
+              {previewPasswordHint(fieldDraft.minLength, fieldDraft.maxLength)}
+            </p>
           ) : null}
 
           {fieldDraft.type === "dropdown" ? (
@@ -538,6 +588,11 @@ export function AdminFormCreatePage() {
                 </div>
                 <div className="field">
                   <label>Priority</label>
+                  {freePriorityHint ? (
+                    <p className="muted" style={{ fontSize: "0.85rem", margin: "0 0 0.35rem", lineHeight: 1.4 }}>
+                      {freePriorityHint}
+                    </p>
+                  ) : null}
                   <input
                     className={`input ${editingDraftErrors.priority ? "field-control-error" : ""}`}
                     type="number"
@@ -549,6 +604,46 @@ export function AdminFormCreatePage() {
                   {editingDraftErrors.priority ? <p className="muted" style={{ color: "var(--color-danger)" }}>{editingDraftErrors.priority}</p> : null}
                 </div>
               </div>
+
+              {["text", "textarea", "email", "password"].includes(editingDraft.type) ? (
+                <div className="grid-2">
+                  <div className="field">
+                    <label>Min length (optional)</label>
+                    <input
+                      className={`input ${editingDraftErrors.minLength ? "field-control-error" : ""}`}
+                      type="number"
+                      min={0}
+                      value={editingDraft.minLength}
+                      onChange={(e) => setEditingDraft((prev) => ({ ...prev, minLength: e.target.value }))}
+                      onWheel={stopNumberWheel}
+                    />
+                    {editingDraftErrors.minLength ? (
+                      <p className="muted" style={{ color: "var(--color-danger)" }}>{editingDraftErrors.minLength}</p>
+                    ) : null}
+                  </div>
+                  <div className="field">
+                    <label>Max length (optional)</label>
+                    <input
+                      className={`input ${editingDraftErrors.maxLength ? "field-control-error" : ""}`}
+                      type="number"
+                      min={0}
+                      value={editingDraft.maxLength}
+                      onChange={(e) => setEditingDraft((prev) => ({ ...prev, maxLength: e.target.value }))}
+                      onWheel={stopNumberWheel}
+                    />
+                    {editingDraftErrors.maxLength ? (
+                      <p className="muted" style={{ color: "var(--color-danger)" }}>{editingDraftErrors.maxLength}</p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {editingDraft.type === "password" ? (
+                <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
+                  {previewPasswordHint(editingDraft.minLength, editingDraft.maxLength)}
+                </p>
+              ) : null}
+
               <div className="row-actions">
                 <button type="submit" className="btn btn-primary">
                   Save

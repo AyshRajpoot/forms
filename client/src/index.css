@@ -325,6 +325,49 @@ h3 {
   resize: vertical;
 }
 
+.password-input-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.input.input--with-password-toggle {
+  padding-right: 2.75rem;
+}
+
+.password-input-toggle {
+  position: absolute;
+  right: 0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  margin: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--color-muted);
+  line-height: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.password-input-wrap:hover .password-input-toggle,
+.password-input-wrap:focus-within .password-input-toggle,
+.password-input-wrap--plain-visible .password-input-toggle {
+  opacity: 1;
+}
+
+.password-input-toggle:hover {
+  color: var(--color-text-secondary);
+}
+
+.password-input-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 .checkbox-row {
   display: flex;
   align-items: center;
@@ -913,6 +956,68 @@ h3 {
 
 .custom-dialog-actions {
   justify-content: flex-end;
+}
+
+/* Center notice (compact toast-style dialog) */
+.center-notice-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(28, 25, 23, 0.5);
+  backdrop-filter: blur(5px);
+}
+
+.center-notice-card {
+  width: 100%;
+  max-width: 22rem;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.center-notice-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--color-text, #e7e5e4);
+}
+
+.center-notice-text {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-muted, #a8a29e);
+}
+
+.center-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.center-notice-btn {
+  min-width: 5rem;
+}
+
+/* Password hint: one line; same slot shows validation error */
+.password-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.password-hint-muted {
+  color: var(--color-muted, #a8a29e);
+}
+
+.password-hint-error {
+  color: var(--color-danger, #b91c1c);
 }
 
 /* Public form page */

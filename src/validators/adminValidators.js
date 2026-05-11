@@ -2,6 +2,13 @@ const { z } = require("zod");
 
 const fieldType = z.enum(["text", "textarea", "email", "number", "password", "dropdown"]);
 
+const passwordRuleFields = {
+  passwordMinUppercase: z.number().int().min(0).max(64).optional(),
+  passwordMinLowercase: z.number().int().min(0).max(64).optional(),
+  passwordMinDigits: z.number().int().min(0).max(64).optional(),
+  passwordMinSpecial: z.number().int().min(0).max(64).optional(),
+};
+
 const optionSchema = z.object({
   label: z.string().trim().min(1).max(120),
   value: z.string().trim().min(1).max(120),
@@ -23,6 +30,7 @@ const createFieldSchema = z
     required: z.boolean().optional(),
     minLength: z.number().int().min(0).optional(),
     maxLength: z.number().int().min(0).optional(),
+    ...passwordRuleFields,
     options: z.array(optionSchema).optional(),
   })
   .refine(
@@ -53,6 +61,7 @@ const updateFieldSchema = z
     required: z.boolean().optional(),
     minLength: z.number().int().min(0).optional(),
     maxLength: z.number().int().min(0).optional(),
+    ...passwordRuleFields,
     options: z.array(optionSchema).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, "Send at least one field to update")
@@ -83,6 +92,19 @@ function validateFormFieldDocument(field) {
     field.minLength > field.maxLength
   ) {
     return "minLength must be less than or equal to maxLength";
+  }
+  if (field.type === "password") {
+    const u = field.passwordMinUppercase ?? 0;
+    const l = field.passwordMinLowercase ?? 0;
+    const d = field.passwordMinDigits ?? 0;
+    const s = field.passwordMinSpecial ?? 0;
+    if ([u, l, d, s].some((n) => n < 0 || n > 64)) {
+      return "Password rule counts must be between 0 and 64";
+    }
+    const sum = u + l + d + s;
+    if (field.minLength != null && sum > field.minLength) {
+      return "Minimum length must be at least the total of required uppercase, lowercase, digits, and special characters";
+    }
   }
   return null;
 }

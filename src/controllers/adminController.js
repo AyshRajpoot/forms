@@ -90,9 +90,19 @@ async function createField(req, res, next) {
       return res.status(404).json({ message: "Form not found" });
     }
 
-    const priorityExists = await FormField.exists({ formId, priority: req.body.priority });
-    if (priorityExists) {
-      return res.status(409).json({ message: "Priority already in use" });
+    let priorityNotice = null;
+    const occupant = await FormField.findOne({ formId, priority: req.body.priority }).select("_id label priority");
+    if (occupant) {
+      const maxRow = await FormField.find({ formId })
+        .sort({ priority: -1 })
+        .limit(1)
+        .select("priority")
+        .lean();
+      const newSlot = (maxRow[0]?.priority ?? 0) + 1;
+      const occupantDoc = await FormField.findById(occupant._id);
+      occupantDoc.priority = newSlot;
+      await occupantDoc.save();
+      priorityNotice = `"${occupantDoc.label}" moved to ${newSlot}. This field is ${req.body.priority}.`;
     }
 
     const requestedLabel = normalizeLabel(req.body.label);
@@ -104,8 +114,23 @@ async function createField(req, res, next) {
       }
     }
 
-    const field = await FormField.create({ formId, ...req.body });
-    return res.status(201).json(field);
+    const body = { formId, ...req.body };
+    if (body.type !== "password") {
+      delete body.passwordMinUppercase;
+      delete body.passwordMinLowercase;
+      delete body.passwordMinDigits;
+      delete body.passwordMinSpecial;
+    } else {
+      body.passwordMinUppercase = body.passwordMinUppercase ?? 1;
+      body.passwordMinLowercase = body.passwordMinLowercase ?? 1;
+      body.passwordMinDigits = body.passwordMinDigits ?? 1;
+      body.passwordMinSpecial = body.passwordMinSpecial ?? 1;
+    }
+
+    const field = await FormField.create(body);
+    const payload = { field };
+    if (priorityNotice) payload.priorityNotice = priorityNotice;
+    return res.status(201).json(payload);
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ message: "Field key already exists for this form" });
@@ -150,26 +175,29 @@ async function updateField(req, res, next) {
       return res.status(404).json({ message: "Field not found" });
     }
 
+    const previousPriority = field.priority;
+
     Object.assign(field, req.body);
 
     if (field.type !== "dropdown") {
       field.options = [];
     }
 
+    if (field.type !== "password") {
+      field.passwordMinUppercase = undefined;
+      field.passwordMinLowercase = undefined;
+      field.passwordMinDigits = undefined;
+      field.passwordMinSpecial = undefined;
+    } else {
+      if (field.passwordMinUppercase == null) field.passwordMinUppercase = 1;
+      if (field.passwordMinLowercase == null) field.passwordMinLowercase = 1;
+      if (field.passwordMinDigits == null) field.passwordMinDigits = 1;
+      if (field.passwordMinSpecial == null) field.passwordMinSpecial = 1;
+    }
+
     const ruleError = validateFormFieldDocument(field.toObject());
     if (ruleError) {
       return res.status(400).json({ message: ruleError });
-    }
-
-    if (req.body.priority !== undefined) {
-      const priorityTaken = await FormField.exists({
-        formId: field.formId,
-        priority: field.priority,
-        _id: { $ne: field._id },
-      });
-      if (priorityTaken) {
-        return res.status(409).json({ message: "Priority already in use" });
-      }
     }
 
     if (req.body.fieldKey !== undefined) {
@@ -194,8 +222,65 @@ async function updateField(req, res, next) {
       }
     }
 
+    const targetPriority = field.priority;
+    const others = await FormField.find({
+      formId: field.formId,
+      priority: targetPriority,
+      _id: { $ne: field._id },
+    }).select("_id label priority");
+
+    let priorityNotice = null;
+
+    if (others.length === 1 && targetPriority !== previousPriority) {
+      const maxRow = await FormField.find({ formId: field.formId })
+        .sort({ priority: -1 })
+        .limit(1)
+        .select("priority")
+        .lean();
+      const tempPriority = (maxRow[0]?.priority ?? 0) + 1;
+
+      field.priority = tempPriority;
+      await field.save();
+
+      const other = await FormField.findById(others[0]._id);
+      other.priority = previousPriority;
+      await other.save();
+
+      field.priority = targetPriority;
+      await field.save();
+
+      priorityNotice = `Swapped with "${other.label}": they are now ${previousPriority}, this field is ${targetPriority}.`;
+
+      return res.status(200).json({ field, priorityNotice });
+    }
+
+    if (others.length > 0) {
+      let maxP = (
+        await FormField.find({ formId: field.formId })
+          .sort({ priority: -1 })
+          .limit(1)
+          .select("priority")
+          .lean()
+      )[0]?.priority ?? 0;
+      const movedLabels = [];
+      for (const ref of others) {
+        const doc = await FormField.findById(ref._id);
+        maxP += 1;
+        doc.priority = maxP;
+        await doc.save();
+        movedLabels.push(`"${doc.label}" → ${maxP}`);
+      }
+      if (others.length === 1 && targetPriority === previousPriority) {
+        priorityNotice = `Duplicate priority fixed: "${others[0].label}" is now ${maxP}.`;
+      } else {
+        priorityNotice = `Adjusted ${others.length} overlapping field(s): ${movedLabels.join(", ")}.`;
+      }
+    }
+
     await field.save();
-    return res.status(200).json(field);
+    const payload = { field };
+    if (priorityNotice) payload.priorityNotice = priorityNotice;
+    return res.status(200).json(payload);
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ message: "Field key or priority conflict for this form" });
