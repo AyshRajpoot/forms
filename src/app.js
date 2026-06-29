@@ -11,7 +11,15 @@ const { notFound, errorHandler } = require("./middleware/errorHandlers");
 const app = express();
 
 app.use(helmet());
-app.use(cors());
+
+const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+app.use(
+  cors({
+    origin: frontendOrigin,
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: "200kb" }));
 app.use(morgan("dev"));
 

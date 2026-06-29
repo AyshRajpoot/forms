@@ -1,6 +1,6 @@
 const { z } = require("zod");
 
-const fieldType = z.enum(["text", "textarea", "email", "number", "password", "dropdown"]);
+const fieldType = z.enum(["text", "textarea", "email", "number", "password", "dropdown", "alphanumeric", "image", "file"]);
 
 const passwordRuleFields = {
   passwordMinUppercase: z.number().int().min(0).max(64).optional(),

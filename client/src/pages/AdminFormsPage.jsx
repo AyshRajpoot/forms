@@ -90,7 +90,7 @@ export function AdminFormsPage() {
         <div className="card-header">
           <h2 className="card-title">Your forms</h2>
           <div className="row-actions">
-            <Link to="/admin/forms/new" className="btn btn-primary btn-sm">
+            <Link to="/admin/forms/new" className="btn btn-theme-primary btn-sm">
               Create form
             </Link>
             <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
@@ -104,7 +104,7 @@ export function AdminFormsPage() {
           <p className="muted">No forms yet. Create one above.</p>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table forms-dashboard-table">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -138,10 +138,10 @@ export function AdminFormsPage() {
                     <td className="table-actions-col">
                       <div className="row-actions row-actions-tight row-actions-inline">
                         <Link
-                          to={`/admin/forms/${f._id}`}
+                          to={`/admin/forms/${f._id}/view`}
                           className="btn btn-ghost btn-sm icon-action-btn"
-                          title="View details"
-                          aria-label="View details"
+                          title="Preview form (how it looks)"
+                          aria-label="Preview form"
                         >
                           <svg viewBox="0 0 24 24" className="icon-action-svg" aria-hidden="true">
                             <path

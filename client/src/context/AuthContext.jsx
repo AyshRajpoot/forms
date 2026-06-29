@@ -19,9 +19,17 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const logout = useCallback(() => {
-    persistToken(null);
-    setTokenState(null);
+  const logout = useCallback(async () => {
+    try {
+      await api("/api/auth/admin/logout", {
+        method: "POST",
+      });
+    } catch {
+      // Proceed with local cleanup even if server logout fails.
+    } finally {
+      persistToken(null);
+      setTokenState(null);
+    }
   }, []);
 
   const value = useMemo(

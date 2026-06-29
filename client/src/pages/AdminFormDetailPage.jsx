@@ -10,24 +10,27 @@ import { getFreePrioritySlotsMessage } from "../utils/priorityHints";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
+  { value: "alphanumeric", label: "Varchar (A-Z, 0-9)" },
   { value: "textarea", label: "Textarea" },
   { value: "email", label: "Email" },
   { value: "number", label: "Number" },
   { value: "password", label: "Password" },
+  { value: "image", label: "Image Upload" },
+  { value: "file", label: "File Upload (PDF/Word)" },
   { value: "dropdown", label: "Dropdown" },
 ];
 
-function previewPasswordHint(minLengthStr, maxLengthStr) {
-  const minL = minLengthStr === "" ? undefined : Number(minLengthStr);
-  const maxL = maxLengthStr === "" ? undefined : Number(maxLengthStr);
+function previewPasswordHint(fieldState) {
+  const minL = fieldState.minLength === "" ? undefined : Number(fieldState.minLength);
+  const maxL = fieldState.maxLength === "" ? undefined : Number(fieldState.maxLength);
   return getPasswordRequirementHint({
     type: "password",
     minLength: minL !== undefined && Number.isFinite(minL) ? minL : undefined,
     maxLength: maxL !== undefined && Number.isFinite(maxL) ? maxL : undefined,
-    passwordMinUppercase: 1,
-    passwordMinLowercase: 1,
-    passwordMinDigits: 1,
-    passwordMinSpecial: 1,
+    passwordMinUppercase: Number(fieldState.passwordMinUppercase ?? 0),
+    passwordMinLowercase: Number(fieldState.passwordMinLowercase ?? 0),
+    passwordMinDigits: Number(fieldState.passwordMinDigits ?? 0),
+    passwordMinSpecial: Number(fieldState.passwordMinSpecial ?? 0),
   });
 }
 
@@ -56,6 +59,10 @@ export function AdminFormDetailPage() {
     minLength: "",
     maxLength: "",
     options: ["", ""],
+    passwordMinUppercase: 1,
+    passwordMinLowercase: 1,
+    passwordMinDigits: 1,
+    passwordMinSpecial: 1,
   });
   const [addingField, setAddingField] = useState(false);
   const [newFieldErrors, setNewFieldErrors] = useState({});
@@ -66,6 +73,7 @@ export function AdminFormDetailPage() {
   const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, field: null });
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [centerNotice, setCenterNotice] = useState({ open: false, message: "" });
+  const [dragFieldId, setDragFieldId] = useState(null);
 
   const nextPriority = useMemo(() => {
     if (!fields.length) return 1;
@@ -170,15 +178,15 @@ export function AdminFormDetailPage() {
       priority: Number(state.priority),
       required: state.required,
     };
-    if (["text", "textarea", "email", "password"].includes(state.type)) {
+    if (["text", "alphanumeric", "textarea", "email", "password"].includes(state.type)) {
       if (state.minLength !== "") body.minLength = Number(state.minLength);
       if (state.maxLength !== "") body.maxLength = Number(state.maxLength);
     }
     if (state.type === "password") {
-      body.passwordMinUppercase = 1;
-      body.passwordMinLowercase = 1;
-      body.passwordMinDigits = 1;
-      body.passwordMinSpecial = 1;
+      body.passwordMinUppercase = Number(state.passwordMinUppercase ?? 1);
+      body.passwordMinLowercase = Number(state.passwordMinLowercase ?? 1);
+      body.passwordMinDigits = Number(state.passwordMinDigits ?? 1);
+      body.passwordMinSpecial = Number(state.passwordMinSpecial ?? 1);
     }
     if (state.type === "dropdown") {
       body.options = state.options
@@ -227,6 +235,10 @@ export function AdminFormDetailPage() {
         minLength: "",
         maxLength: "",
         options: ["", ""],
+        passwordMinUppercase: 1,
+        passwordMinLowercase: 1,
+        passwordMinDigits: 1,
+        passwordMinSpecial: 1,
       });
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes("already exists")) {
@@ -251,6 +263,10 @@ export function AdminFormDetailPage() {
       maxLength: field.maxLength ?? "",
       options: field.options?.length ? field.options.map((o) => o.label) : ["", ""],
       fieldKey: field.fieldKey,
+      passwordMinUppercase: field.passwordMinUppercase ?? 1,
+      passwordMinLowercase: field.passwordMinLowercase ?? 1,
+      passwordMinDigits: field.passwordMinDigits ?? 1,
+      passwordMinSpecial: field.passwordMinSpecial ?? 1,
     });
     setEditOpen(true);
   }
@@ -286,15 +302,15 @@ export function AdminFormDetailPage() {
         priority: priorityNum,
         required: editField.required,
       };
-      if (["text", "textarea", "email", "password"].includes(editField.type)) {
+      if (["text", "alphanumeric", "textarea", "email", "password"].includes(editField.type)) {
         if (editField.minLength !== "") body.minLength = Number(editField.minLength);
         if (editField.maxLength !== "") body.maxLength = Number(editField.maxLength);
       }
       if (editField.type === "password") {
-        body.passwordMinUppercase = 1;
-        body.passwordMinLowercase = 1;
-        body.passwordMinDigits = 1;
-        body.passwordMinSpecial = 1;
+        body.passwordMinUppercase = Number(editField.passwordMinUppercase ?? 1);
+        body.passwordMinLowercase = Number(editField.passwordMinLowercase ?? 1);
+        body.passwordMinDigits = Number(editField.passwordMinDigits ?? 1);
+        body.passwordMinSpecial = Number(editField.passwordMinSpecial ?? 1);
       }
       if (editField.type === "dropdown") {
         body.options = editField.options
@@ -354,6 +370,28 @@ export function AdminFormDetailPage() {
       setError(err.message);
     } finally {
       setFieldTogglingId(null);
+    }
+  }
+
+  async function handleFieldDrop(targetField) {
+    if (!dragFieldId || dragFieldId === targetField._id) return;
+    const dragged = fields.find((item) => item._id === dragFieldId);
+    if (!dragged) return;
+
+    setError("");
+    try {
+      const res = await api(`/api/admin/fields/${dragFieldId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ priority: Number(targetField.priority) }),
+      });
+      if (res.priorityNotice) {
+        setCenterNotice({ open: true, message: res.priorityNotice });
+      }
+      await load({ showLoading: false });
+    } catch (err) {
+      setError(err.message || "Failed to reorder fields");
+    } finally {
+      setDragFieldId(null);
     }
   }
 
@@ -428,9 +466,12 @@ export function AdminFormDetailPage() {
         </form>
       </div>
 
-      <div className="tab-row" style={{ alignItems: "center" }}>
+      <div className="tab-row" style={{ alignItems: "center", display: "flex", gap: "0.75rem" }}>
         <Link to={`/admin/forms/${formId}/view`} className="btn btn-secondary btn-sm">
           Open view page
+        </Link>
+        <Link to={`/admin/forms/${formId}/submissions`} className="btn btn-primary btn-sm">
+          View Submissions
         </Link>
       </div>
 
@@ -448,9 +489,10 @@ export function AdminFormDetailPage() {
                 <p className="muted">No fields yet.</p>
               ) : (
                 <div className="table-wrap">
-                  <table className="table">
+                  <table className="table form-fields-table">
                     <thead>
                       <tr>
+                        <th className="drag-col" aria-label="Drag" />
                         <th>Label</th>
                         <th>Type</th>
                         <th>Priority</th>
@@ -461,7 +503,29 @@ export function AdminFormDetailPage() {
                     </thead>
                     <tbody>
                       {visibleFields.map((f) => (
-                        <tr key={f._id}>
+                        <tr
+                          key={f._id}
+                          draggable
+                          onDragStart={() => setDragFieldId(f._id)}
+                          onDragEnd={() => setDragFieldId(null)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            void handleFieldDrop(f);
+                          }}
+                          style={{ cursor: "move" }}
+                        >
+                          <td className="drag-col">
+                            <span className="drag-handle-icon" title="Drag to reorder" aria-label="Drag to reorder">
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="8" cy="6.5" r="1.4" />
+                                <circle cx="8" cy="12" r="1.4" />
+                                <circle cx="8" cy="17.5" r="1.4" />
+                                <circle cx="16" cy="6.5" r="1.4" />
+                                <circle cx="16" cy="12" r="1.4" />
+                                <circle cx="16" cy="17.5" r="1.4" />
+                              </svg>
+                            </span>
+                          </td>
                           <td>{f.label}</td>
                           <td>{f.type}</td>
                           <td>{f.priority}</td>
@@ -502,7 +566,7 @@ export function AdminFormDetailPage() {
                 <h3>Fields setup</h3>
                 <button
                   type="button"
-                  className="btn btn-primary btn-sm"
+                  className="btn btn-theme-primary btn-sm"
                   onClick={() => setShowAddFieldForm((prev) => !prev)}
                 >
                   {showAddFieldForm ? "Hide Add Field" : "Form Add Field"}
@@ -561,7 +625,7 @@ export function AdminFormDetailPage() {
                     ) : null}
                   </div>
                 </div>
-                {["text", "textarea", "email", "password"].includes(newField.type) ? (
+                {["text", "alphanumeric", "textarea", "email", "password"].includes(newField.type) ? (
                   <div className="grid-2">
                     <div className="field">
                       <label>Min length (optional)</label>
@@ -587,9 +651,55 @@ export function AdminFormDetailPage() {
                 ) : null}
 
                 {newField.type === "password" ? (
-                  <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
-                    {previewPasswordHint(newField.minLength, newField.maxLength)}
-                  </p>
+                  <div className="stack" style={{ gap: "0.75rem", marginBottom: "0.75rem" }}>
+                    <div className="grid-2">
+                      <div className="field">
+                        <label>Min Uppercase Characters</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          value={newField.passwordMinUppercase}
+                          onChange={(e) => setNewField((prev) => ({ ...prev, passwordMinUppercase: e.target.value }))}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Min Lowercase Characters</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          value={newField.passwordMinLowercase}
+                          onChange={(e) => setNewField((prev) => ({ ...prev, passwordMinLowercase: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid-2">
+                      <div className="field">
+                        <label>Min Digits (0-9)</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          value={newField.passwordMinDigits}
+                          onChange={(e) => setNewField((prev) => ({ ...prev, passwordMinDigits: e.target.value }))}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Min Special Characters</label>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          value={newField.passwordMinSpecial}
+                          onChange={(e) => setNewField((prev) => ({ ...prev, passwordMinSpecial: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0" }}>
+                      {previewPasswordHint(newField)}
+                    </p>
+                  </div>
                 ) : null}
 
                 {newField.type === "dropdown" ? (
@@ -646,7 +756,7 @@ export function AdminFormDetailPage() {
                   />
                   Field active
                 </label>
-                <button type="submit" className="btn btn-primary" disabled={addingField}>
+                <button type="submit" className="btn btn-theme-primary" disabled={addingField}>
                   {addingField ? "Adding..." : "Add field"}
                 </button>
                 </form>
@@ -714,7 +824,7 @@ export function AdminFormDetailPage() {
                 </div>
               </div>
 
-              {["text", "textarea", "email", "password"].includes(editField.type) ? (
+              {["text", "alphanumeric", "textarea", "email", "password"].includes(editField.type) ? (
                 <div className="grid-2">
                   <div className="field">
                     <label>Min length</label>
@@ -740,9 +850,55 @@ export function AdminFormDetailPage() {
               ) : null}
 
               {editField.type === "password" ? (
-                <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0.35rem" }}>
-                  {previewPasswordHint(editField.minLength, editField.maxLength)}
-                </p>
+                <div className="stack" style={{ gap: "0.75rem", marginBottom: "0.75rem" }}>
+                  <div className="grid-2">
+                    <div className="field">
+                      <label>Min Uppercase Characters</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={editField.passwordMinUppercase}
+                        onChange={(e) => setEditField((prev) => ({ ...prev, passwordMinUppercase: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Min Lowercase Characters</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={editField.passwordMinLowercase}
+                        onChange={(e) => setEditField((prev) => ({ ...prev, passwordMinLowercase: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid-2">
+                    <div className="field">
+                      <label>Min Digits (0-9)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={editField.passwordMinDigits}
+                        onChange={(e) => setEditField((prev) => ({ ...prev, passwordMinDigits: e.target.value }))}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Min Special Characters</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min={0}
+                        value={editField.passwordMinSpecial}
+                        onChange={(e) => setEditField((prev) => ({ ...prev, passwordMinSpecial: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <p className="muted password-hint" style={{ fontSize: "0.85rem", margin: "0.15rem 0 0" }}>
+                    {previewPasswordHint(editField)}
+                  </p>
+                </div>
               ) : null}
 
               {editField.type === "dropdown" ? (

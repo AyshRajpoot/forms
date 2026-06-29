@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api/client";
+import { CenterNotice } from "../components/CenterNotice";
 import { PasswordHint } from "../components/PasswordHint";
 import { PasswordInputWithToggle } from "../components/PasswordInputWithToggle";
-import { computeLivePasswordErrors, getPasswordConfirmPairs, validateFormFieldValues } from "../utils/formFieldValidation";
+import {
+  computeLivePasswordErrors,
+  getPasswordConfirmPairs,
+  getTextFieldLettersOnlyErrorIfInvalid,
+  TEXT_FIELD_LETTERS_ONLY_HINT,
+  validateFormFieldValues,
+} from "../utils/formFieldValidation";
 
 export function AdminFormViewPage() {
   const { formId } = useParams();
@@ -14,6 +21,7 @@ export function AdminFormViewPage() {
   const [values, setValues] = useState({});
   const [fieldErrors, setFieldErrors] = useState({});
   const [validateOk, setValidateOk] = useState("");
+  const [submitState, setSubmitState] = useState({ saving: false, success: "", error: "" });
   const [formNonce] = useState(() => Math.random().toString(36).slice(2, 10));
   const [passwordPlainVisible, setPasswordPlainVisible] = useState({});
 
@@ -60,6 +68,16 @@ export function AdminFormViewPage() {
     [passwordPairs]
   );
   const fieldByKey = useMemo(() => new Map(visible.map((f) => [f.fieldKey, f])), [visible]);
+  const hasBinaryField = useMemo(() => visible.some((field) => ["image", "file"].includes(field.type)), [visible]);
+  const submitButtonWrapStyle = {
+    marginTop: "1rem",
+    display: "flex",
+    justifyContent: "center",
+    width: "100%",
+  };
+  const submitButtonStyle = { minWidth: "220px" };
+  const submitErrorMessage = submitState.error?.trim();
+  const submitSuccessMessage = submitState.success?.trim();
 
   function handlePasswordChange(fieldKey, nextVal) {
     setValidateOk("");
@@ -77,13 +95,83 @@ export function AdminFormViewPage() {
     });
   }
 
+  function validateCurrentValues() {
+    setValidateOk("");
+    setSubmitState((prev) => ({ ...prev, error: "", success: "" }));
+    const { errors, ok } = validateFormFieldValues(visible, values);
+    setFieldErrors(errors);
+    return ok;
+  }
+
+  async function handleSaveSubmission() {
+    if (!form?.key) {
+      setSubmitState({ saving: false, success: "", error: "Form key is missing, cannot submit." });
+      return;
+    }
+
+    const ok = validateCurrentValues();
+    if (!ok) return;
+
+    setSubmitState({ saving: true, success: "", error: "" });
+    try {
+      let payload = values;
+      let headers = undefined;
+
+      if (hasBinaryField) {
+        const formData = new FormData();
+        visible.forEach((field) => {
+          const current = values[field.fieldKey];
+          if (["image", "file"].includes(field.type)) {
+            if (current instanceof File) {
+              formData.append(field.fieldKey, current);
+            }
+            return;
+          }
+          formData.append(field.fieldKey, current == null ? "" : String(current));
+        });
+        payload = formData;
+        headers = {};
+      }
+
+      const result = await api(`/api/forms/${encodeURIComponent(form.key)}/submit`, {
+        method: "POST",
+        body: hasBinaryField ? payload : JSON.stringify(payload),
+        headers,
+      });
+
+      const initial = {};
+      visible.forEach((field) => {
+        initial[field.fieldKey] = "";
+      });
+      setValues(initial);
+      setFieldErrors({});
+      setValidateOk("");
+      setSubmitState({
+        saving: false,
+        success: result?.submissionId
+          ? `Saved to database. Submission ID: ${result.submissionId}`
+          : "Saved to database successfully.",
+        error: "",
+      });
+    } catch (err) {
+      if (err?.body?.errors) {
+        setFieldErrors(err.body.errors);
+      }
+      setSubmitState({
+        saving: false,
+        success: "",
+        error: err?.message || "Failed to save submission.",
+      });
+    }
+  }
+
   return (
     <div className="stack">
       <section className="page-hero page-hero-compact">
         <p className="page-hero-kicker">View</p>
         <h1 className="page-hero-title">Form preview</h1>
         <p className="page-hero-lead">
-          Interactive preview: type and use Validate — rules run locally; responses are not collected.
+          Interactive preview: validate locally or submit here to save a real response in database.
         </p>
       </section>
 
@@ -107,12 +195,7 @@ export function AdminFormViewPage() {
               className="stack"
               onSubmit={(e) => {
                 e.preventDefault();
-                setValidateOk("");
-                const { errors, ok } = validateFormFieldValues(visible, values);
-                setFieldErrors(errors);
-                if (ok) {
-                  setValidateOk("All checks passed. Preview does not save data.");
-                }
+                void handleSaveSubmission();
               }}
               autoComplete="off"
             >
@@ -121,7 +204,7 @@ export function AdminFormViewPage() {
                 const err = fieldErrors[field.fieldKey];
                 return (
                   <div className="field-preview-row" key={field._id}>
-                    <div style={{ width: "100%" }}>
+                    <div style={{ width: "100%", maxWidth: "640px", margin: "0 auto" }}>
                       <strong>
                         {field.label}
                         {field.required ? <span className="required-star"> *</span> : null}
@@ -197,11 +280,129 @@ export function AdminFormViewPage() {
                             error={err}
                           />
                         </>
+                      ) : field.type === "text" ? (
+                        <>
+                          <input
+                            className={`input ${err ? "field-control-error" : values[field.fieldKey] ? "field-control-has-value" : ""}`}
+                            type="text"
+                            value={values[field.fieldKey] ?? ""}
+                            minLength={field.minLength}
+                            maxLength={field.maxLength}
+                            autoComplete="off"
+                            name={`field_${formId}_${field.fieldKey}_${formNonce}`}
+                            style={{ marginTop: "0.5rem" }}
+                            onChange={(e) => {
+                              setValidateOk("");
+                              const raw = e.target.value;
+                              setValues((prev) => ({ ...prev, [field.fieldKey]: raw }));
+                              setFieldErrors((prev) => {
+                                const next = { ...prev };
+                                const fmt = getTextFieldLettersOnlyErrorIfInvalid(raw);
+                                if (fmt) next[field.fieldKey] = fmt;
+                                else delete next[field.fieldKey];
+                                return next;
+                              });
+                            }}
+                          />
+                          {String(values[field.fieldKey] ?? "").length > 0 ? (
+                            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0", lineHeight: 1.35 }}>
+                              {TEXT_FIELD_LETTERS_ONLY_HINT}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : field.type === "alphanumeric" ? (
+                        <>
+                          <input
+                            className={`input ${err ? "field-control-error" : values[field.fieldKey] ? "field-control-has-value" : ""}`}
+                            type="text"
+                            value={values[field.fieldKey] ?? ""}
+                            minLength={field.minLength}
+                            maxLength={field.maxLength}
+                            autoComplete="off"
+                            name={`field_${formId}_${field.fieldKey}_${formNonce}`}
+                            style={{ marginTop: "0.5rem" }}
+                            onChange={(e) => {
+                              setValidateOk("");
+                              setFieldErrors((prev) => {
+                                const next = { ...prev };
+                                delete next[field.fieldKey];
+                                return next;
+                              });
+                              setValues((prev) => ({ ...prev, [field.fieldKey]: e.target.value }));
+                            }}
+                          />
+                        </>
+                      ) : field.type === "image" ? (
+                        <>
+                          <div className="image-upload-row" style={{ marginTop: "0.5rem" }}>
+                            <div className="image-upload-meta">
+                              {values[field.fieldKey] instanceof File ? (
+                                <p className="muted" style={{ fontSize: "0.8rem", margin: 0, lineHeight: 1.35 }}>
+                                  Selected: {values[field.fieldKey].name}
+                                </p>
+                              ) : (
+                                <p className="muted" style={{ fontSize: "0.8rem", margin: 0, lineHeight: 1.35 }}>
+                                  Upload image
+                                </p>
+                              )}
+                            </div>
+                            <input
+                              id={`preview-image-${field.fieldKey}`}
+                              className="sr-only"
+                              type="file"
+                              accept="image/*"
+                              autoComplete="off"
+                              name={`field_${formId}_${field.fieldKey}_${formNonce}`}
+                              onChange={(e) => {
+                                setValidateOk("");
+                                setFieldErrors((prev) => {
+                                  const next = { ...prev };
+                                  delete next[field.fieldKey];
+                                  return next;
+                                });
+                                const file = e.target.files && e.target.files[0] ? e.target.files[0] : "";
+                                setValues((prev) => ({ ...prev, [field.fieldKey]: file }));
+                              }}
+                            />
+                            <label
+                              htmlFor={`preview-image-${field.fieldKey}`}
+                              className={`image-upload-box ${err ? "field-control-error" : ""}`}
+                            >
+                              <span>{values[field.fieldKey] instanceof File ? "Change" : "Upload"}</span>
+                            </label>
+                          </div>
+                        </>
+                      ) : field.type === "file" ? (
+                        <>
+                          <input
+                            className={`input ${err ? "field-control-error" : values[field.fieldKey] ? "field-control-has-value" : ""}`}
+                            type="file"
+                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            autoComplete="off"
+                            name={`field_${formId}_${field.fieldKey}_${formNonce}`}
+                            style={{ marginTop: "0.5rem" }}
+                            onChange={(e) => {
+                              setValidateOk("");
+                              setFieldErrors((prev) => {
+                                const next = { ...prev };
+                                delete next[field.fieldKey];
+                                return next;
+                              });
+                              const file = e.target.files && e.target.files[0] ? e.target.files[0] : "";
+                              setValues((prev) => ({ ...prev, [field.fieldKey]: file }));
+                            }}
+                          />
+                          {values[field.fieldKey] instanceof File ? (
+                            <p className="muted" style={{ fontSize: "0.8rem", margin: "0.35rem 0 0", lineHeight: 1.35 }}>
+                              Selected: {values[field.fieldKey].name}
+                            </p>
+                          ) : null}
+                        </>
                       ) : (
                         <>
                           <input
                             className={`input ${err ? "field-control-error" : values[field.fieldKey] ? "field-control-has-value" : ""}`}
-                            type={field.type === "number" ? "number" : field.type === "email" ? "email" : "text"}
+                            type={field.type === "number" ? "number" : "email"}
                             value={values[field.fieldKey] ?? ""}
                             minLength={field.minLength}
                             maxLength={field.maxLength}
@@ -229,13 +430,28 @@ export function AdminFormViewPage() {
                   </div>
                 );
               })}
-              <button type="submit" className="btn btn-primary btn-sm" style={{ marginTop: "0.5rem" }}>
-                Validate form
-              </button>
+              <div style={submitButtonWrapStyle}>
+                <button type="submit" className="btn btn-primary btn-sm" style={submitButtonStyle} disabled={submitState.saving}>
+                  {submitState.saving ? "Saving..." : "Submit"}
+                </button>
+              </div>
+              {submitErrorMessage ? (
+                <p style={{ color: "var(--color-danger)", fontSize: "0.9rem", textAlign: "center", marginTop: "0.5rem" }}>
+                  {submitErrorMessage}
+                </p>
+              ) : null}
             </form>
           )
         ) : null}
       </div>
+      <CenterNotice
+        open={Boolean(submitSuccessMessage)}
+        title="Form submitted successfully"
+        message={submitSuccessMessage}
+        showCancel={false}
+        okLabel="OK"
+        onDismiss={() => setSubmitState((prev) => ({ ...prev, success: "" }))}
+      />
     </div>
   );
 }
