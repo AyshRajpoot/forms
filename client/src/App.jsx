@@ -8,6 +8,7 @@ import { AdminFormsPage } from "./pages/AdminFormsPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { PublicFormPage } from "./pages/PublicFormPage";
+import { AdminSubmissionsPage } from "./pages/AdminSubmissionsPage";
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuth();
@@ -74,6 +75,16 @@ export default function App() {
           <ProtectedRoute>
             <AppShell>
               <AdminFormViewPage />
+            </AppShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/forms/:formId/submissions"
+        element={
+          <ProtectedRoute>
+            <AppShell>
+              <AdminSubmissionsPage />
             </AppShell>
           </ProtectedRoute>
         }

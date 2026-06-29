@@ -10,6 +10,7 @@ const {
   getField,
   updateField,
   deleteField,
+  listSubmissions,
 } = require("../controllers/adminController");
 const { authenticateToken, authorizeRoles } = require("../middleware/verifyToken");
 const { validateBody } = require("../middleware/validateBody");
@@ -32,6 +33,7 @@ router.delete("/forms/:formId", deleteForm);
 
 router.get("/forms/:formId/fields", listFields);
 router.post("/forms/:formId/fields", validateBody(createFieldSchema), createField);
+router.get("/forms/:formId/submissions", listSubmissions);
 
 router.get("/fields/:fieldId", getField);
 router.patch("/fields/:fieldId", validateBody(updateFieldSchema), updateField);

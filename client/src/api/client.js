@@ -1,4 +1,21 @@
-const API_BASE = import.meta.env.VITE_API_URL || "";
+/** Backend origin only (e.g. https://my-api.onrender.com). No trailing slash; do not add /api — paths already start with /api/… */
+function normalizeApiBase(raw) {
+  let base = String(raw ?? "").trim();
+  base = base.replace(/\/+$/, "");
+  if (base.endsWith("/api")) {
+    base = base.slice(0, -4);
+  }
+  return base;
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
+
+if (import.meta.env.PROD && !API_BASE) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[api] VITE_API_URL is empty: /api requests hit this deployment. Host the Express app elsewhere and set VITE_API_URL to that server’s origin (no /api suffix)."
+  );
+}
 
 function authHeader() {
   const token = localStorage.getItem("token");
@@ -6,13 +23,15 @@ function authHeader() {
 }
 
 export async function api(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
     ...authHeader(),
     ...options.headers,
   };
 
   const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
     ...options,
     headers,
   });

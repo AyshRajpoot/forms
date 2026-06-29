@@ -7,10 +7,13 @@ import { getFreePrioritySlotsMessage } from "../utils/priorityHints";
 
 const FIELD_TYPES = [
   { value: "text", label: "Text" },
+  { value: "alphanumeric", label: "Varchar (A-Z, 0-9)" },
   { value: "textarea", label: "Textarea" },
   { value: "email", label: "Email" },
   { value: "number", label: "Number" },
   { value: "password", label: "Password" },
+  { value: "image", label: "Image Upload" },
+  { value: "file", label: "File Upload (PDF/Word)" },
   { value: "dropdown", label: "Dropdown" },
 ];
 
@@ -129,7 +132,7 @@ export function AdminFormCreatePage() {
       }
     }
 
-    if (["text", "textarea", "email", "password"].includes(draft.type)) {
+    if (["text", "alphanumeric", "textarea", "email", "password"].includes(draft.type)) {
       const minRaw = draft.minLength;
       const maxRaw = draft.maxLength;
       const minLength = toSafeInt(minRaw);
@@ -188,7 +191,7 @@ export function AdminFormCreatePage() {
       required: fieldDraft.required,
       enabled: fieldDraft.enabled,
     };
-    if (["text", "textarea", "email", "password"].includes(fieldDraft.type)) {
+    if (["text", "alphanumeric", "textarea", "email", "password"].includes(fieldDraft.type)) {
       if (fieldDraft.minLength !== "") payload.minLength = Number(fieldDraft.minLength);
       if (fieldDraft.maxLength !== "") payload.maxLength = Number(fieldDraft.maxLength);
     }
@@ -285,7 +288,7 @@ export function AdminFormCreatePage() {
       required: editingDraft.required,
       enabled: editingDraft.enabled,
     };
-    if (["text", "textarea", "email", "password"].includes(editingDraft.type)) {
+    if (["text", "alphanumeric", "textarea", "email", "password"].includes(editingDraft.type)) {
       if (editingDraft.minLength !== "") updated.minLength = Number(editingDraft.minLength);
       else delete updated.minLength;
       if (editingDraft.maxLength !== "") updated.maxLength = Number(editingDraft.maxLength);
@@ -402,7 +405,7 @@ export function AdminFormCreatePage() {
             </div>
           </div>
 
-          {["text", "textarea", "email", "password"].includes(fieldDraft.type) ? (
+          {["text", "alphanumeric", "textarea", "email", "password"].includes(fieldDraft.type) ? (
             <div className="grid-2">
               <div className="field">
                 <label>Min length (optional)</label>
@@ -490,7 +493,7 @@ export function AdminFormCreatePage() {
             />
             Field active
           </label>
-          <button className="btn btn-primary" type="submit">
+          <button className="btn btn-theme-primary" type="submit">
             Add field
           </button>
         </form>
@@ -540,7 +543,7 @@ export function AdminFormCreatePage() {
         )}
 
         <div className="row-actions">
-          <button type="button" className="btn btn-primary" onClick={handleSaveForm} disabled={loading || saving}>
+          <button type="button" className="btn btn-theme-primary" onClick={handleSaveForm} disabled={loading || saving}>
             {saving ? "Saving..." : "Save form"}
           </button>
           <button type="button" className="btn btn-secondary" onClick={() => navigate("/admin/forms")}>
@@ -605,7 +608,7 @@ export function AdminFormCreatePage() {
                 </div>
               </div>
 
-              {["text", "textarea", "email", "password"].includes(editingDraft.type) ? (
+              {["text", "alphanumeric", "textarea", "email", "password"].includes(editingDraft.type) ? (
                 <div className="grid-2">
                   <div className="field">
                     <label>Min length (optional)</label>
@@ -645,7 +648,7 @@ export function AdminFormCreatePage() {
               ) : null}
 
               <div className="row-actions">
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-theme-primary">
                   Save
                 </button>
                 <button

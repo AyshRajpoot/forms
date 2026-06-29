@@ -155,6 +155,40 @@ export function computeLivePasswordErrors(fields, values) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function textFieldHasOnlyLettersAndSpaces(value) {
+  return !/[^\p{L}\s]/u.test(String(value ?? ""));
+}
+
+function alphanumericHasOnlyLettersDigitsAndSpaces(value) {
+  return !/[^A-Za-z0-9\s]/.test(String(value ?? ""));
+}
+
+function isAllowedDocumentFile(file) {
+  const allowedMimes = new Set([
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]);
+  const mime = String(file?.type || "").toLowerCase();
+  if (allowedMimes.has(mime)) return true;
+  return /\.(pdf|doc|docx)$/i.test(String(file?.name || ""));
+}
+
+/** Shown under every `type: "text"` field so users know the rule before typing. */
+export const TEXT_FIELD_LETTERS_ONLY_HINT =
+  "Only letters and spaces. Numbers (0–9) and special characters (e.g. @, #, !) are not allowed.";
+
+/**
+ * If the value has content but breaks the letters-only rule, return a short error for live + submit validation.
+ * @returns {string | null}
+ */
+export function getTextFieldLettersOnlyErrorIfInvalid(value) {
+  const s = String(value ?? "");
+  if (s.trim() === "") return null;
+  if (textFieldHasOnlyLettersAndSpaces(s)) return null;
+  return "Remove numbers and special characters — only letters and spaces are allowed here.";
+}
+
 export function validateFormFieldValues(fields, values) {
   /** @type {Record<string, string>} */
   const errors = {};
@@ -168,6 +202,34 @@ export function validateFormFieldValues(fields, values) {
     const raw = values[key];
     const value = raw === undefined || raw === null ? "" : String(raw);
     const trimmed = value.trim();
+
+    if (f.type === "image") {
+      const file = raw instanceof File ? raw : null;
+      if (f.required && !file) {
+        errors[key] = "Please upload an image.";
+        continue;
+      }
+      if (!file) continue;
+      if (!String(file.type || "").startsWith("image/")) {
+        errors[key] = "Upload a valid image file.";
+        continue;
+      }
+      continue;
+    }
+
+    if (f.type === "file") {
+      const file = raw instanceof File ? raw : null;
+      if (f.required && !file) {
+        errors[key] = "Please upload a file.";
+        continue;
+      }
+      if (!file) continue;
+      if (!isAllowedDocumentFile(file)) {
+        errors[key] = "Upload only PDF or Word files (.pdf, .doc, .docx).";
+        continue;
+      }
+      continue;
+    }
 
     if (f.type === "dropdown") {
       if (f.required && value === "") {
@@ -204,7 +266,22 @@ export function validateFormFieldValues(fields, values) {
       continue;
     }
 
-    if (["text", "textarea", "email"].includes(f.type)) {
+    if (f.type === "text") {
+      const textFmt = getTextFieldLettersOnlyErrorIfInvalid(value);
+      if (textFmt) {
+        errors[key] = textFmt;
+        continue;
+      }
+    }
+
+    if (f.type === "alphanumeric") {
+      if (trimmed !== "" && !alphanumericHasOnlyLettersDigitsAndSpaces(value)) {
+        errors[key] = "Use only letters, numbers, and spaces.";
+        continue;
+      }
+    }
+
+    if (["text", "alphanumeric", "textarea", "email"].includes(f.type)) {
       const len = value.length;
       if (f.minLength != null && len > 0 && len < f.minLength) {
         errors[key] = `At least ${f.minLength} characters.`;

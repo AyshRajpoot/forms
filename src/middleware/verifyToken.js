@@ -1,13 +1,38 @@
 const { verifyToken } = require("../config/jwt");
+const TokenBlacklist = require("../models/TokenBlacklist");
 
-function authenticateToken(req, res, next) {
+function parseCookies(cookieHeader) {
+  const list = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(";").forEach((cookie) => {
+    const parts = cookie.split("=");
+    list[parts.shift().trim()] = decodeURIComponent(parts.join("="));
+  });
+  return list;
+}
+
+async function authenticateToken(req, res, next) {
+  let token = null;
   const authHeader = req.headers.authorization || "";
-  if (!authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Missing bearer token" });
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
   }
 
-  const token = authHeader.slice(7);
+  if (!token && req.headers.cookie) {
+    const cookies = parseCookies(req.headers.cookie);
+    token = cookies.token;
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: "Missing authorization token" });
+  }
+
   try {
+    const blacklisted = await TokenBlacklist.findOne({ token });
+    if (blacklisted) {
+      return res.status(401).json({ message: "Token expired or logged out" });
+    }
+
     req.user = verifyToken(token);
     return next();
   } catch (error) {

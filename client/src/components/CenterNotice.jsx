@@ -1,7 +1,16 @@
 /**
- * Small centered notice (replaces window.alert for non-blocking UI).
+ * Reusable centered notice dialog.
  */
-export function CenterNotice({ open, title = "Priority updated", message, onDismiss, onCancel }) {
+export function CenterNotice({
+  open,
+  title = "Priority updated",
+  message,
+  onDismiss,
+  onCancel,
+  showCancel = false,
+  cancelLabel = "Cancel",
+  okLabel = "OK",
+}) {
   if (!open || !message) return null;
 
   const handleCancel = onCancel ?? onDismiss;
@@ -20,11 +29,13 @@ export function CenterNotice({ open, title = "Priority updated", message, onDism
         </h2>
         <p className="center-notice-text">{message}</p>
         <div className="center-notice-actions">
-          <button type="button" className="btn btn-secondary btn-sm center-notice-btn" onClick={handleCancel}>
-            Cancel
-          </button>
+          {showCancel ? (
+            <button type="button" className="btn btn-secondary btn-sm center-notice-btn" onClick={handleCancel}>
+              {cancelLabel}
+            </button>
+          ) : null}
           <button type="button" className="btn btn-primary btn-sm center-notice-btn" onClick={onDismiss}>
-            OK
+            {okLabel}
           </button>
         </div>
       </div>

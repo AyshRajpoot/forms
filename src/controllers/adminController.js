@@ -1,5 +1,6 @@
 const Form = require("../models/Form");
 const FormField = require("../models/FormField");
+const Submission = require("../models/Submission");
 const { validateFormFieldDocument } = require("../validators/adminValidators");
 
 function normalizeLabel(value) {
@@ -303,6 +304,29 @@ async function deleteField(req, res, next) {
   }
 }
 
+async function listSubmissions(req, res, next) {
+  const { formId } = req.params;
+  try {
+    const form = await Form.findById(formId);
+    if (!form) {
+      return res.status(404).json({ message: "Form not found" });
+    }
+
+    const submissions = await Submission.find({ form: formId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const normalized = submissions.map((item) => ({
+      ...item,
+      answers: item.answers && typeof item.answers === "object" ? item.answers : item.data || {},
+    }));
+
+    return res.status(200).json(normalized);
+  } catch (error) {
+    return next(error);
+  }
+}
+
 module.exports = {
   createForm,
   listForms,
@@ -314,4 +338,5 @@ module.exports = {
   getField,
   updateField,
   deleteField,
+  listSubmissions,
 };
